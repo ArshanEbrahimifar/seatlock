@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: seatlock-postgres
+
+    environment:
+      POSTGRES_USER: seatlock
+      POSTGRES_PASSWORD: seatlock
+      POSTGRES_DB: seatlock
+
+    ports:
+      - '5432:5432'
+
+    volumes:
+      - seatlock_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  seatlock_postgres_data:

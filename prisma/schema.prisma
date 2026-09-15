@@ -1,0 +1,69 @@
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum EventSeatStatus {
+  AVAILABLE
+  HELD
+  BOOKED
+}
+
+model Venue {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  city      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  seats  Seat[]
+  events Event[]
+}
+
+model Seat {
+  id        String   @id @default(uuid()) @db.Uuid
+  section   String
+  row       String
+  number    Int
+  venueId   String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  venue      Venue       @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  eventSeats EventSeat[]
+
+  @@unique([venueId, section, row, number])
+}
+
+model Event {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  startsAt  DateTime
+  venueId   String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  venue      Venue       @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  eventSeats EventSeat[]
+}
+
+model EventSeat {
+  id        String          @id @default(uuid()) @db.Uuid
+  eventId   String          @db.Uuid
+  seatId    String          @db.Uuid
+  price     Decimal         @db.Decimal(10, 2)
+  status    EventSeatStatus @default(AVAILABLE)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  seat  Seat  @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, seatId])
+}
