@@ -1,6 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { CreateSeatDto } from './dto/create-seat.dto';
+import { Prisma } from '../../generated/prisma/client';
 
 @Injectable()
 @Injectable()
@@ -21,14 +26,24 @@ export class SeatsService {
       throw new NotFoundException('Venue not found');
     }
 
-    return this.database.seat.create({
-      data: {
-        section: dto.section,
-        row: dto.row,
-        number: dto.number,
-        venueId,
-      },
-    });
+    try {
+      return await this.database.seat.create({
+        data: {
+          section: dto.section,
+          row: dto.row,
+          number: dto.number,
+          venueId,
+        },
+      });
+    } catch (error: unknown) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Seat already exists');
+      }
+      throw error;
+    }
   }
 
   async findAll(venueId: string) {
