@@ -240,4 +240,71 @@ export class EventSeatsService {
       },
     });
   }
+
+  async book(eventSeatId: string, holdToken: string) {
+    const now = new Date();
+
+    const result = await this.database.eventSeat.updateMany({
+      where: {
+        id: eventSeatId,
+        status: 'HELD',
+        holdToken,
+        holdExpiresAt: {
+          gt: now,
+        },
+      },
+      data: {
+        status: 'BOOKED',
+        holdToken: null,
+        holdExpiresAt: null,
+      },
+    });
+
+    if (result.count === 0) {
+      const eventSeat = await this.database.eventSeat.findUnique({
+        where: {
+          id: eventSeatId,
+        },
+        select: {
+          status: true,
+          holdToken: true,
+          holdExpiresAt: true,
+        },
+      });
+
+      if (!eventSeat) {
+        throw new NotFoundException('Event seat not found');
+      }
+
+      if (eventSeat.status === 'BOOKED') {
+        throw new ConflictException('Seat is already booked');
+      }
+
+      if (eventSeat.status !== 'HELD') {
+        throw new ConflictException('Seat is not currently held');
+      }
+
+      if (eventSeat.holdToken !== holdToken) {
+        throw new ConflictException('Invalid hold token');
+      }
+
+      if (!eventSeat.holdExpiresAt || eventSeat.holdExpiresAt <= now) {
+        throw new ConflictException('Seat hold has expired');
+      }
+
+      throw new ConflictException('Seat could not be booked');
+    }
+
+    return this.database.eventSeat.findUnique({
+      where: {
+        id: eventSeatId,
+      },
+      select: {
+        id: true,
+        status: true,
+        holdToken: true,
+        holdExpiresAt: true,
+      },
+    });
+  }
 }
