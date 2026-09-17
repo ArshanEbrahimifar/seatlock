@@ -5,6 +5,7 @@ import { envSchema } from './config/env.Schema';
 import { VenuesModule } from './venues/venues.module';
 import { SeatsModule } from './seats/seats.module';
 import { EventsModule } from './events/events.module';
+import { EventSeatsModule } from './event-seats/event-seats.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { EventsModule } from './events/events.module';
     VenuesModule,
     SeatsModule,
     EventsModule,
+    EventSeatsModule,
   ],
 })
 export class AppModule {}
