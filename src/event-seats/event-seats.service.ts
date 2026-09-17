@@ -8,10 +8,14 @@ import { Prisma } from '../../generated/prisma/client';
 
 import { DatabaseService } from '../database/database.service';
 import { CreateEventSeatDto } from './dto/create-event-seat.dto';
-
+import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 @Injectable()
 export class EventSeatsService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly configService: ConfigService,
+  ) {}
 
   async create(dto: CreateEventSeatDto, eventId: string) {
     const [seat, event] = await Promise.all([
@@ -112,6 +116,127 @@ export class EventSeatsService {
             number: true,
           },
         },
+      },
+    });
+  }
+
+  async hold(eventSeatId: string) {
+    const now = new Date();
+
+    const holdSeconds =
+      this.configService.getOrThrow<number>('SEAT_HOLD_SECONDS');
+
+    const holdToken = randomUUID();
+
+    const holdExpiresAt = new Date(now.getTime() + holdSeconds * 1000);
+
+    const result = await this.database.eventSeat.updateMany({
+      where: {
+        id: eventSeatId,
+
+        OR: [
+          {
+            status: 'AVAILABLE',
+          },
+          {
+            status: 'HELD',
+            holdExpiresAt: {
+              lte: now,
+            },
+          },
+        ],
+      },
+
+      data: {
+        status: 'HELD',
+        holdToken,
+        holdExpiresAt,
+      },
+    });
+
+    if (result.count === 0) {
+      const eventSeat = await this.database.eventSeat.findUnique({
+        where: {
+          id: eventSeatId,
+        },
+        select: {
+          status: true,
+        },
+      });
+
+      if (!eventSeat) {
+        throw new NotFoundException('Event seat not found');
+      }
+
+      if (eventSeat.status === 'BOOKED') {
+        throw new ConflictException('Seat is already booked');
+      }
+
+      throw new ConflictException('Seat is currently held');
+    }
+
+    return this.database.eventSeat.findUnique({
+      where: {
+        id: eventSeatId,
+      },
+      select: {
+        id: true,
+        status: true,
+        holdToken: true,
+        holdExpiresAt: true,
+      },
+    });
+  }
+
+  async release(eventSeatId: string, holdToken: string) {
+    const result = await this.database.eventSeat.updateMany({
+      where: {
+        id: eventSeatId,
+        status: 'HELD',
+        holdToken,
+      },
+      data: {
+        status: 'AVAILABLE',
+        holdToken: null,
+        holdExpiresAt: null,
+      },
+    });
+
+    if (result.count === 0) {
+      const eventSeat = await this.database.eventSeat.findUnique({
+        where: {
+          id: eventSeatId,
+        },
+        select: {
+          status: true,
+          holdToken: true,
+        },
+      });
+
+      if (!eventSeat) {
+        throw new NotFoundException('Event seat not found');
+      }
+
+      if (eventSeat.status === 'BOOKED') {
+        throw new ConflictException('Seat is already booked');
+      }
+
+      if (eventSeat.status !== 'HELD') {
+        throw new ConflictException('Seat is not currently held');
+      }
+
+      throw new ConflictException('Invalid hold token');
+    }
+
+    return this.database.eventSeat.findUnique({
+      where: {
+        id: eventSeatId,
+      },
+      select: {
+        id: true,
+        status: true,
+        holdToken: true,
+        holdExpiresAt: true,
       },
     });
   }

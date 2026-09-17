@@ -1,0 +1,26 @@
+import { Body, Controller, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+
+import { EventSeatsService } from '../event-seats/event-seats.service';
+import { ReleaseHoldDto } from './dto/release-hold.dto';
+
+@Controller('event-seats')
+export class EventSeatHoldsController {
+  constructor(private readonly eventSeatsService: EventSeatsService) {}
+
+  @Post(':eventSeatId/hold')
+  hold(
+    @Param('eventSeatId', new ParseUUIDPipe())
+    eventSeatId: string,
+  ) {
+    return this.eventSeatsService.hold(eventSeatId);
+  }
+
+  @Post(':eventSeatId/release')
+  release(
+    @Param('eventSeatId', new ParseUUIDPipe())
+    eventSeatId: string,
+    @Body() dto: ReleaseHoldDto,
+  ) {
+    return this.eventSeatsService.release(eventSeatId, dto.holdToken);
+  }
+}

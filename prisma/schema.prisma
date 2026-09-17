@@ -59,6 +59,11 @@ model EventSeat {
   seatId    String          @db.Uuid
   price     Decimal         @db.Decimal(10, 2)
   status    EventSeatStatus @default(AVAILABLE)
+
+  holdToken     String?         @db.Uuid
+  holdExpiresAt DateTime?
+
+
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 

@@ -8,4 +8,6 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
 
   DATABASE_URL: z.string().min(1),
+
+  SEAT_HOLD_SECONDS: z.coerce.number().int().positive().default(300),
 });
