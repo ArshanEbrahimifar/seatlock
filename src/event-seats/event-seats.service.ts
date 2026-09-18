@@ -10,11 +10,13 @@ import { DatabaseService } from '../database/database.service';
 import { CreateEventSeatDto } from './dto/create-event-seat.dto';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
+import { OrderExpirationService } from '../order-expiration/order-expiration.service';
 @Injectable()
 export class EventSeatsService {
   constructor(
     private readonly database: DatabaseService,
     private readonly configService: ConfigService,
+    private readonly orderExpirationService: OrderExpirationService,
   ) {}
 
   async create(dto: CreateEventSeatDto, eventId: string) {
@@ -247,10 +249,13 @@ export class EventSeatsService {
     const paymentWindowSeconds = this.configService.getOrThrow<number>(
       'PAYMENT_WINDOW_SECONDS',
     );
-    const orderExpiresAt = new Date(Date.now() + paymentWindowSeconds * 1000);
 
-    return this.database.$transaction(async (tx) => {
-      const result = await tx.eventSeat.updateMany({
+    const orderExpiresAt = new Date(
+      now.getTime() + paymentWindowSeconds * 1000,
+    );
+
+    const result = await this.database.$transaction(async (tx) => {
+      const seatResult = await tx.eventSeat.updateMany({
         where: {
           id: eventSeatId,
           status: 'HELD',
@@ -266,7 +271,7 @@ export class EventSeatsService {
         },
       });
 
-      if (result.count === 0) {
+      if (seatResult.count === 0) {
         const eventSeat = await tx.eventSeat.findUnique({
           where: {
             id: eventSeatId,
@@ -327,9 +332,16 @@ export class EventSeatsService {
         order,
         eventSeat: {
           id: eventSeat.id,
-          status: 'RESERVED',
+          status: 'RESERVED' as const,
         },
       };
     });
+
+    await this.orderExpirationService.schedule(
+      result.order.id,
+      result.order.expiresAt,
+    );
+
+    return result;
   }
 }

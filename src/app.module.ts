@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from './database/database.module';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { envSchema } from './config/env.Schema';
 import { VenuesModule } from './venues/venues.module';
 import { SeatsModule } from './seats/seats.module';
 import { EventsModule } from './events/events.module';
 import { EventSeatsModule } from './event-seats/event-seats.module';
 import { OrdersModule } from './orders/orders.module';
-
+import { OrderExpirationModule } from './order-expiration/order-expiration.module';
+import { BullModule } from '@nestjs/bullmq';
 @Module({
   imports: [
     DatabaseModule,
@@ -16,11 +17,22 @@ import { OrdersModule } from './orders/orders.module';
       cache: true,
       validate: (config) => envSchema.parse(config),
     }),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+
+      useFactory: (configService: ConfigService) => ({
+        connection: {
+          host: configService.getOrThrow<string>('REDIS_HOST'),
+          port: configService.getOrThrow<number>('REDIS_PORT'),
+        },
+      }),
+    }),
     VenuesModule,
     SeatsModule,
     EventsModule,
     EventSeatsModule,
     OrdersModule,
+    OrderExpirationModule,
   ],
 })
 export class AppModule {}

@@ -12,4 +12,8 @@ export const envSchema = z.object({
   SEAT_HOLD_SECONDS: z.coerce.number().int().positive().default(300),
 
   PAYMENT_WINDOW_SECONDS: z.coerce.number().int().positive().default(600),
+
+  REDIS_HOST: z.string().min(1).default('localhost'),
+
+  REDIS_PORT: z.coerce.number().int().positive().default(6379),
 });
