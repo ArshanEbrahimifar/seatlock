@@ -13,7 +13,14 @@ datasource db {
 enum EventSeatStatus {
   AVAILABLE
   HELD
+  RESERVED
   BOOKED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
 }
 
 model Venue {
@@ -70,5 +77,20 @@ model EventSeat {
   seat  Seat  @relation(fields: [seatId], references: [id], onDelete: Cascade)
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
+  order    Order?
+
   @@unique([eventId, seatId])
+}
+
+model Order {
+  id          String      @id @default(uuid()) @db.Uuid
+  eventSeatId String      @db.Uuid
+  amount      Decimal     @db.Decimal(10, 2)
+  status      OrderStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  eventSeat EventSeat @relation(fields: [eventSeatId], references: [id], onDelete: Restrict)
+
+  @@unique([eventSeatId])
 }

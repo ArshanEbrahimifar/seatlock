@@ -1,6 +1,6 @@
 import { IsUUID } from 'class-validator';
 
-export class BookSeatDto {
+export class ReserveSeatDto {
   @IsUUID()
   holdToken!: string;
 }
