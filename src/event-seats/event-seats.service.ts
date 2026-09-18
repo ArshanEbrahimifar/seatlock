@@ -244,6 +244,11 @@ export class EventSeatsService {
   async reserve(eventSeatId: string, holdToken: string) {
     const now = new Date();
 
+    const paymentWindowSeconds = this.configService.getOrThrow<number>(
+      'PAYMENT_WINDOW_SECONDS',
+    );
+    const orderExpiresAt = new Date(Date.now() + paymentWindowSeconds * 1000);
+
     return this.database.$transaction(async (tx) => {
       const result = await tx.eventSeat.updateMany({
         where: {
@@ -314,6 +319,7 @@ export class EventSeatsService {
         data: {
           eventSeatId,
           amount: eventSeat.price,
+          expiresAt: orderExpiresAt,
         },
       });
 

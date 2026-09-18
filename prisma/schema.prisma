@@ -77,7 +77,7 @@ model EventSeat {
   seat  Seat  @relation(fields: [seatId], references: [id], onDelete: Cascade)
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  order    Order?
+  order    Order[]
 
   @@unique([eventId, seatId])
 }
@@ -87,10 +87,11 @@ model Order {
   eventSeatId String      @db.Uuid
   amount      Decimal     @db.Decimal(10, 2)
   status      OrderStatus @default(PENDING)
+  expiresAt   DateTime
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
   eventSeat EventSeat @relation(fields: [eventSeatId], references: [id], onDelete: Restrict)
 
-  @@unique([eventSeatId])
+ @@index([eventSeatId, status])
 }

@@ -10,4 +10,6 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
 
   SEAT_HOLD_SECONDS: z.coerce.number().int().positive().default(300),
+
+  PAYMENT_WINDOW_SECONDS: z.coerce.number().int().positive().default(600),
 });
