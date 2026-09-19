@@ -328,6 +328,16 @@ export class EventSeatsService {
         },
       });
 
+      await tx.outboxEvent.create({
+        data: {
+          type: 'ORDER_EXPIRATION',
+          payload: {
+            orderId: order.id,
+            expiresAt: order.expiresAt.toISOString(),
+          },
+        },
+      });
+
       return {
         order,
         eventSeat: {
@@ -336,11 +346,6 @@ export class EventSeatsService {
         },
       };
     });
-
-    await this.orderExpirationService.schedule(
-      result.order.id,
-      result.order.expiresAt,
-    );
 
     return result;
   }

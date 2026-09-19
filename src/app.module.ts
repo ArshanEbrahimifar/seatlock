@@ -9,6 +9,8 @@ import { EventSeatsModule } from './event-seats/event-seats.module';
 import { OrdersModule } from './orders/orders.module';
 import { OrderExpirationModule } from './order-expiration/order-expiration.module';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
+import { OutboxModule } from './outbox/outbox.module';
 @Module({
   imports: [
     DatabaseModule,
@@ -27,12 +29,14 @@ import { BullModule } from '@nestjs/bullmq';
         },
       }),
     }),
+    ScheduleModule.forRoot(),
     VenuesModule,
     SeatsModule,
     EventsModule,
     EventSeatsModule,
     OrdersModule,
     OrderExpirationModule,
+    OutboxModule,
   ],
 })
 export class AppModule {}
