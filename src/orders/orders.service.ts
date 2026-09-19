@@ -20,6 +20,7 @@ export class OrdersService {
         select: {
           id: true,
           eventSeatId: true,
+          amount: true,
           status: true,
           expiresAt: true,
         },
@@ -71,6 +72,19 @@ export class OrdersService {
       if (seatResult.count === 0) {
         throw new ConflictException('Reserved seat could not be booked');
       }
+
+      await tx.outboxEvent.create({
+        data: {
+          type: 'ORDER_PAID',
+
+          payload: {
+            orderId: order.id,
+            eventSeatId: order.eventSeatId,
+            amount: order.amount.toString(),
+            paidAt: now.toISOString(),
+          },
+        },
+      });
 
       const paidOrder = await tx.order.findUniqueOrThrow({
         where: {

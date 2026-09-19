@@ -98,6 +98,7 @@ model Order {
 
 enum OutboxEventType {
   ORDER_EXPIRATION
+  ORDER_PAID
 }
 
 model OutboxEvent {

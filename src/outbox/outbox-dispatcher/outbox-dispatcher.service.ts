@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { DatabaseService } from '../../database/database.service';
 import { OrderExpirationService } from '../../order-expiration/order-expiration.service';
+import { KafkaProducerService } from '../../kafka/kafka-producer/kafka-producer.service';
 
 @Injectable()
 export class OutboxDispatcherService {
@@ -10,6 +11,7 @@ export class OutboxDispatcherService {
   constructor(
     private readonly database: DatabaseService,
     private readonly orderExpirationService: OrderExpirationService,
+    private readonly kafkaProducerService: KafkaProducerService,
   ) {}
 
   @Interval(5000)
@@ -33,16 +35,39 @@ export class OutboxDispatcherService {
 
       for (const event of events) {
         try {
-          if (event.type === 'ORDER_EXPIRATION') {
-            const payload = event.payload as {
-              orderId: string;
-              expiresAt: string;
-            };
+          switch (event.type) {
+            case 'ORDER_EXPIRATION': {
+              const payload = event.payload as {
+                orderId: string;
+                expiresAt: string;
+              };
 
-            await this.orderExpirationService.schedule(
-              payload.orderId,
-              new Date(payload.expiresAt),
-            );
+              await this.orderExpirationService.schedule(
+                payload.orderId,
+                new Date(payload.expiresAt),
+              );
+
+              break;
+            }
+
+            case 'ORDER_PAID': {
+              const payload = event.payload as {
+                orderId: string;
+                eventSeatId: string;
+                amount: string;
+                paidAt: string;
+              };
+
+              await this.kafkaProducerService.publishOrderPaid({
+                eventId: event.id,
+                orderId: payload.orderId,
+                eventSeatId: payload.eventSeatId,
+                amount: payload.amount,
+                paidAt: payload.paidAt,
+              });
+
+              break;
+            }
           }
 
           await this.database.outboxEvent.update({

@@ -25,8 +25,8 @@ export class EventSeatHoldsController {
     return this.eventSeatsService.release(eventSeatId, dto.holdToken);
   }
 
-  @Post(':eventSeatId/book')
-  book(
+  @Post(':eventSeatId/reserve')
+  reserve(
     @Param('eventSeatId', new ParseUUIDPipe())
     eventSeatId: string,
     @Body() dto: ReserveSeatDto,

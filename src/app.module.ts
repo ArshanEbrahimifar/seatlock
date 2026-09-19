@@ -11,6 +11,8 @@ import { OrderExpirationModule } from './order-expiration/order-expiration.modul
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OutboxModule } from './outbox/outbox.module';
+import { KafkaModule } from './kafka/kafka.module';
+import { OrderEventsModule } from './order-events/order-events.module';
 @Module({
   imports: [
     DatabaseModule,
@@ -37,6 +39,8 @@ import { OutboxModule } from './outbox/outbox.module';
     OrdersModule,
     OrderExpirationModule,
     OutboxModule,
+    KafkaModule,
+    OrderEventsModule,
   ],
 })
 export class AppModule {}

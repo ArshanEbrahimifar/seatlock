@@ -16,4 +16,6 @@ export const envSchema = z.object({
   REDIS_HOST: z.string().min(1).default('localhost'),
 
   REDIS_PORT: z.coerce.number().int().positive().default(6379),
+
+  KAFKA_BROKERS: z.string().min(1).default('localhost:9092'),
 });
