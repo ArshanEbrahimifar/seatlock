@@ -30,6 +30,11 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
     amount: string;
     paidAt: string;
   }) {
-    await lastValueFrom(this.client.emit('order.paid', payload));
+    await lastValueFrom(
+      this.client.emit('order.paid', {
+        key: payload.orderId,
+        value: payload,
+      }),
+    );
   }
 }
