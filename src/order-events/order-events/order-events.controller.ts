@@ -1,19 +1,17 @@
 import { Controller } from '@nestjs/common';
 import { EventPattern, Payload } from '@nestjs/microservices';
 
+import {
+  OrderEventsService,
+  type OrderPaidEvent,
+} from '../order-events.service';
+
 @Controller()
 export class OrderEventsController {
+  constructor(private readonly orderEventsService: OrderEventsService) {}
+
   @EventPattern('order.paid')
-  handleOrderPaid(
-    @Payload()
-    payload: {
-      eventId: string;
-      orderId: string;
-      eventSeatId: string;
-      amount: string;
-      paidAt: string;
-    },
-  ) {
-    console.log('ORDER_PAID received:', payload);
+  async handleOrderPaid(@Payload() payload: OrderPaidEvent) {
+    await this.orderEventsService.handleOrderPaid(payload);
   }
 }
