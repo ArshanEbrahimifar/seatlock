@@ -24,6 +24,7 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
   }
 
   async publishOrderPaid(payload: {
+    correlationId: string;
     eventId: string;
     orderId: string;
     eventSeatId: string;

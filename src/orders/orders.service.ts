@@ -4,13 +4,22 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { CorrelationService } from '../correlation/correlation.service';
+import { randomUUID } from 'node:crypto';
+import { AppLoggerService } from '../logging/app-logger.service';
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly correlationService: CorrelationService,
+    private readonly logger: AppLoggerService,
+  ) {}
 
   async pay(orderId: string) {
     const now = new Date();
+
+    const correlationId = this.correlationService.getId() ?? randomUUID();
 
     return this.database.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
@@ -78,6 +87,7 @@ export class OrdersService {
           type: 'ORDER_PAID',
 
           payload: {
+            correlationId,
             orderId: order.id,
             eventSeatId: order.eventSeatId,
             amount: order.amount.toString(),
@@ -96,6 +106,11 @@ export class OrdersService {
         where: {
           id: order.eventSeatId,
         },
+      });
+
+      this.logger.log('order.paid', {
+        orderId,
+        eventSeatId: order.eventSeatId,
       });
 
       return {

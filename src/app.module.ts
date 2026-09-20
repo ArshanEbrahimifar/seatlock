@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { DatabaseModule } from './database/database.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { envSchema } from './config/env.Schema';
@@ -13,6 +13,9 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { OutboxModule } from './outbox/outbox.module';
 import { KafkaModule } from './kafka/kafka.module';
 import { OrderEventsModule } from './order-events/order-events.module';
+import { CorrelationModule } from './correlation/correlation.module';
+import { CorrelationMiddleware } from './correlation/correlation.middleware';
+import { LoggingModule } from './logging/logging.module';
 @Module({
   imports: [
     DatabaseModule,
@@ -41,6 +44,12 @@ import { OrderEventsModule } from './order-events/order-events.module';
     OutboxModule,
     KafkaModule,
     OrderEventsModule,
+    CorrelationModule,
+    LoggingModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationMiddleware).forRoutes('*');
+  }
+}

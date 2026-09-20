@@ -3,6 +3,7 @@ import { Interval } from '@nestjs/schedule';
 import { DatabaseService } from '../../database/database.service';
 import { OrderExpirationService } from '../../order-expiration/order-expiration.service';
 import { KafkaProducerService } from '../../kafka/kafka-producer/kafka-producer.service';
+import { AppLoggerService } from '../../logging/app-logger.service';
 
 @Injectable()
 export class OutboxDispatcherService {
@@ -12,6 +13,7 @@ export class OutboxDispatcherService {
     private readonly database: DatabaseService,
     private readonly orderExpirationService: OrderExpirationService,
     private readonly kafkaProducerService: KafkaProducerService,
+    private readonly logger: AppLoggerService,
   ) {}
 
   @Interval(5000)
@@ -52,6 +54,7 @@ export class OutboxDispatcherService {
 
             case 'ORDER_PAID': {
               const payload = event.payload as {
+                correlationId: string;
                 orderId: string;
                 eventSeatId: string;
                 amount: string;
@@ -59,11 +62,17 @@ export class OutboxDispatcherService {
               };
 
               await this.kafkaProducerService.publishOrderPaid({
+                correlationId: payload.correlationId,
                 eventId: event.id,
                 orderId: payload.orderId,
                 eventSeatId: payload.eventSeatId,
                 amount: payload.amount,
                 paidAt: payload.paidAt,
+              });
+
+              this.logger.log('outbox.published', {
+                outboxEventId: event.id,
+                type: event.type,
               });
 
               break;
@@ -79,6 +88,12 @@ export class OutboxDispatcherService {
             },
           });
         } catch (error) {
+          this.logger.error('outbox.publish_failed', {
+            outboxEventId: event.id,
+            type: event.type,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+
           await this.database.outboxEvent.update({
             where: {
               id: event.id,
