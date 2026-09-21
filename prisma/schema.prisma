@@ -107,14 +107,18 @@ model OutboxEvent {
   payload     Json
 
   processedAt DateTime?
+  deadLetteredAt DateTime?
+  
   lockedAt    DateTime?
   lockedBy    String?
   
   attempts    Int             @default(0)
+  nextAttemptAt  DateTime?
   lastError   String?
+
   createdAt   DateTime        @default(now())
 
-  @@index([processedAt, createdAt])
+  @@index([processedAt,deadLetteredAt,nextAttemptAt,lockedAt,createdAt])
 }
 
 model InboxEvent {

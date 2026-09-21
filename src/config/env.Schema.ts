@@ -20,4 +20,10 @@ export const envSchema = z.object({
   KAFKA_BROKERS: z.string().min(1).default('localhost:9092'),
 
   OUTBOX_LOCK_SECONDS: z.coerce.number().int().positive().default(30),
+
+  OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
+
+  OUTBOX_RETRY_BASE_SECONDS: z.coerce.number().int().positive().default(5),
+
+  OUTBOX_RETRY_MAX_SECONDS: z.coerce.number().int().positive().default(300),
 });

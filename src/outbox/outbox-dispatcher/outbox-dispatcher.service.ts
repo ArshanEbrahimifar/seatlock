@@ -40,11 +40,24 @@ export class OutboxDispatcherService {
         'OUTBOX_LOCK_SECONDS',
       );
 
+      const maxAttempts = this.configService.getOrThrow<number>(
+        'OUTBOX_MAX_ATTEMPTS',
+      );
+
+      const retryBaseSeconds = this.configService.getOrThrow<number>(
+        'OUTBOX_RETRY_BASE_SECONDS',
+      );
+
+      const retryMaxSeconds = this.configService.getOrThrow<number>(
+        'OUTBOX_RETRY_MAX_SECONDS',
+      );
+
       const lockExpiredBefore = new Date(now.getTime() - lockSeconds * 1000);
 
       const events = await this.database.outboxEvent.findMany({
         where: {
           processedAt: null,
+          deadLetteredAt: null,
 
           OR: [
             {
@@ -54,6 +67,20 @@ export class OutboxDispatcherService {
               lockedAt: {
                 lte: lockExpiredBefore,
               },
+            },
+          ],
+          AND: [
+            {
+              OR: [
+                {
+                  nextAttemptAt: null,
+                },
+                {
+                  nextAttemptAt: {
+                    lte: now,
+                  },
+                },
+              ],
             },
           ],
         },
@@ -70,6 +97,7 @@ export class OutboxDispatcherService {
           where: {
             id: event.id,
             processedAt: null,
+            deadLetteredAt: null,
 
             OR: [
               {
@@ -101,12 +129,15 @@ export class OutboxDispatcherService {
               id: event.id,
               lockedBy: this.instanceId,
               processedAt: null,
+              deadLetteredAt: null,
             },
 
             data: {
               processedAt: new Date(),
+              nextAttemptAt: null,
               lockedAt: null,
               lockedBy: null,
+
               lastError: null,
             },
           });
@@ -119,28 +150,52 @@ export class OutboxDispatcherService {
           const message =
             error instanceof Error ? error.message : 'Unknown error';
 
+          const nextAttempts = event.attempts + 1;
+
+          const retryDelaySeconds = Math.min(
+            retryBaseSeconds * 2 ** (nextAttempts - 1),
+            retryMaxSeconds,
+          );
+
+          const nextAttemptAt = new Date(Date.now() + retryDelaySeconds * 1000);
+
+          const shouldDeadLetter = nextAttempts >= maxAttempts;
+
           await this.database.outboxEvent.updateMany({
             where: {
               id: event.id,
               lockedBy: this.instanceId,
               processedAt: null,
+              deadLetteredAt: null,
             },
 
             data: {
-              attempts: {
-                increment: 1,
-              },
-
+              attempts: nextAttempts,
               lastError: message,
+
+              deadLetteredAt: shouldDeadLetter ? new Date() : null,
+              nextAttemptAt: shouldDeadLetter ? null : nextAttemptAt,
 
               lockedAt: null,
               lockedBy: null,
             },
           });
 
-          this.logger.error('outbox.publish_failed', {
+          if (shouldDeadLetter) {
+            this.logger.error('outbox.dead_lettered', {
+              outboxEventId: event.id,
+              type: event.type,
+              attempts: nextAttempts,
+              error: message,
+            });
+
+            continue;
+          }
+
+          this.logger.warn('outbox.retry_scheduled', {
             outboxEventId: event.id,
             type: event.type,
+            attempts: nextAttempts,
             error: message,
           });
         }
