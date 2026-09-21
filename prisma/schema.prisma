@@ -105,7 +105,11 @@ model OutboxEvent {
   id          String          @id @default(uuid()) @db.Uuid
   type        OutboxEventType
   payload     Json
+
   processedAt DateTime?
+  lockedAt    DateTime?
+  lockedBy    String?
+  
   attempts    Int             @default(0)
   lastError   String?
   createdAt   DateTime        @default(now())
