@@ -112,6 +112,8 @@ model OutboxEvent {
   lockedAt    DateTime?
   lockedBy    String?
   
+  redriveCount Int @default(0) 
+
   attempts    Int             @default(0)
   nextAttemptAt  DateTime?
   lastError   String?
