@@ -16,6 +16,7 @@ import { OrderEventsModule } from './order-events/order-events.module';
 import { CorrelationModule } from './correlation/correlation.module';
 import { CorrelationMiddleware } from './correlation/correlation.middleware';
 import { LoggingModule } from './logging/logging.module';
+import { HealthModule } from './health/health.module';
 @Module({
   imports: [
     DatabaseModule,
@@ -46,6 +47,7 @@ import { LoggingModule } from './logging/logging.module';
     OrderEventsModule,
     CorrelationModule,
     LoggingModule,
+    HealthModule,
   ],
 })
 export class AppModule implements NestModule {
