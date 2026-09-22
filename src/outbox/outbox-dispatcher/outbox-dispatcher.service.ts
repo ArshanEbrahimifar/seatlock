@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Interval } from '@nestjs/schedule';
 import { randomUUID } from 'node:crypto';
@@ -11,9 +11,9 @@ import { OrderExpirationService } from '../../order-expiration/order-expiration.
 import { CorrelationService } from '../../correlation/correlation.service';
 
 @Injectable()
-export class OutboxDispatcherService {
+export class OutboxDispatcherService implements OnApplicationShutdown {
   private running = false;
-
+  private shuttingDown = false;
   private readonly instanceId = `${hostname()}-${process.pid}-${randomUUID()}`;
 
   constructor(
@@ -27,7 +27,7 @@ export class OutboxDispatcherService {
 
   @Interval(5000)
   async dispatch() {
-    if (this.running) {
+    if (this.running || this.shuttingDown) {
       return;
     }
 
@@ -247,6 +247,14 @@ export class OutboxDispatcherService {
 
         break;
       }
+    }
+  }
+
+  async onApplicationShutdown() {
+    this.shuttingDown = true;
+
+    while (this.running) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 }
