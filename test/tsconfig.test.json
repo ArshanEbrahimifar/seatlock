@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "ES2022",
+    "moduleResolution": "node",
+    "target": "ES2023",
+
+    "resolvePackageJsonExports": false,
+
+    "esModuleInterop": true,
+    "types": ["jest", "node"]
+  }
+}
