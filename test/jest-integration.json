@@ -1,7 +1,7 @@
 {
   "rootDir": "../",
   "testEnvironment": "node",
-  "testRegex": ".*\\.concurrency-spec\\.ts$",
+  "testRegex": ".*\\.(concurrency|integration)-spec\\.ts$",
   "extensionsToTreatAsEsm": [".ts"],
   "transform": {
     "^.+\\.tsx?$": [
