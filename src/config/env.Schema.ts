@@ -26,4 +26,6 @@ export const envSchema = z.object({
   OUTBOX_RETRY_BASE_SECONDS: z.coerce.number().int().positive().default(5),
 
   OUTBOX_RETRY_MAX_SECONDS: z.coerce.number().int().positive().default(300),
+
+  DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(20),
 });

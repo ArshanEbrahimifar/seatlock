@@ -9,8 +9,10 @@ export class DatabaseService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor(configService: ConfigService) {
+    const dbPoolMax = configService.getOrThrow<number>('DB_POOL_MAX');
     const adapter = new PrismaPg({
       connectionString: configService.getOrThrow<string>('DATABASE_URL'),
+      max: dbPoolMax,
     });
     super({ adapter });
   }
