@@ -246,17 +246,26 @@ export class EventSeatsService {
       throw new ConflictException('Invalid hold token');
     }
 
-    return this.database.eventSeat.findUnique({
+    const updatedSeat = await this.database.eventSeat.findUniqueOrThrow({
       where: {
         id: eventSeatId,
       },
       select: {
         id: true,
+        eventId: true,
         status: true,
-        holdToken: true,
         holdExpiresAt: true,
       },
     });
+
+    this.seatUpdatesGateway.emitSeatUpdated({
+      eventId: updatedSeat.eventId,
+      eventSeatId: updatedSeat.id,
+      status: updatedSeat.status,
+      holdExpiresAt: updatedSeat.holdExpiresAt,
+    });
+
+    return updatedSeat;
   }
 
   async reserve(eventSeatId: string, holdToken: string) {
@@ -333,6 +342,8 @@ export class EventSeatsService {
         select: {
           id: true,
           price: true,
+          eventId: true,
+          holdExpiresAt: true,
         },
       });
 
@@ -359,8 +370,17 @@ export class EventSeatsService {
         eventSeat: {
           id: eventSeat.id,
           status: 'RESERVED' as const,
+          eventId: eventSeat.eventId,
+          holdExpiresAt: eventSeat.holdExpiresAt,
         },
       };
+    });
+
+    this.seatUpdatesGateway.emitSeatUpdated({
+      eventId: result.eventSeat.eventId,
+      eventSeatId: result.eventSeat.id,
+      status: result.eventSeat.status,
+      holdExpiresAt: result.eventSeat.holdExpiresAt,
     });
 
     return result;

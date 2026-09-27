@@ -7,6 +7,7 @@ import { DatabaseService } from '../database/database.service';
 import { CorrelationService } from '../correlation/correlation.service';
 import { randomUUID } from 'node:crypto';
 import { AppLoggerService } from '../logging/app-logger.service';
+import { SeatUpdatesGateway } from '../realtime/seat-updates.gateway';
 
 @Injectable()
 export class OrdersService {
@@ -14,6 +15,7 @@ export class OrdersService {
     private readonly database: DatabaseService,
     private readonly correlationService: CorrelationService,
     private readonly logger: AppLoggerService,
+    private readonly seatUpdatesGateway: SeatUpdatesGateway,
   ) {}
 
   async pay(orderId: string) {
@@ -21,7 +23,7 @@ export class OrdersService {
 
     const correlationId = this.correlationService.getId() ?? randomUUID();
 
-    return this.database.$transaction(async (tx) => {
+    const result = await this.database.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: {
           id: orderId,
@@ -118,10 +120,17 @@ export class OrdersService {
         eventSeat: bookedSeat,
       };
     });
+    this.seatUpdatesGateway.emitSeatUpdated({
+      eventId: result.eventSeat.eventId,
+      eventSeatId: result.eventSeat.id,
+      status: result.eventSeat.status,
+      holdExpiresAt: result.eventSeat.holdExpiresAt,
+    });
+    return result;
   }
 
   async cancel(orderId: string) {
-    return this.database.$transaction(async (tx) => {
+    const result = await this.database.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: {
           id: orderId,
@@ -187,12 +196,19 @@ export class OrdersService {
         }),
       };
     });
+    this.seatUpdatesGateway.emitSeatUpdated({
+      eventId: result.eventSeat.eventId,
+      eventSeatId: result.eventSeat.id,
+      status: result.eventSeat.status,
+      holdExpiresAt: result.eventSeat.holdExpiresAt,
+    });
+    return result;
   }
 
   async expire(orderId: string) {
     const now = new Date();
 
-    return this.database.$transaction(async (tx) => {
+    const result = await this.database.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: {
           id: orderId,
@@ -262,5 +278,13 @@ export class OrdersService {
         }),
       };
     });
+
+    this.seatUpdatesGateway.emitSeatUpdated({
+      eventId: result.eventSeat.eventId,
+      eventSeatId: result.eventSeat.id,
+      status: result.eventSeat.status,
+      holdExpiresAt: result.eventSeat.holdExpiresAt,
+    });
+    return result;
   }
 }
