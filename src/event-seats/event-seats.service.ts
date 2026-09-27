@@ -11,12 +11,14 @@ import { CreateEventSeatDto } from './dto/create-event-seat.dto';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { OrderExpirationService } from '../order-expiration/order-expiration.service';
+import { SeatUpdatesGateway } from '../realtime/seat-updates.gateway';
 @Injectable()
 export class EventSeatsService {
   constructor(
     private readonly database: DatabaseService,
     private readonly configService: ConfigService,
     private readonly orderExpirationService: OrderExpirationService,
+    private readonly seatUpdatesGateway: SeatUpdatesGateway,
   ) {}
 
   async create(dto: CreateEventSeatDto, eventId: string) {
@@ -174,20 +176,34 @@ export class EventSeatsService {
         throw new ConflictException('Seat is already booked');
       }
 
+      if (eventSeat.status === 'RESERVED') {
+        throw new ConflictException('Seat is already reserved');
+      }
+
       throw new ConflictException('Seat is currently held');
     }
 
-    return this.database.eventSeat.findUnique({
+    const updatedSeat = await this.database.eventSeat.findUniqueOrThrow({
       where: {
         id: eventSeatId,
       },
       select: {
         id: true,
+        eventId: true,
         status: true,
         holdToken: true,
         holdExpiresAt: true,
       },
     });
+
+    this.seatUpdatesGateway.emitSeatUpdated({
+      eventId: updatedSeat.eventId,
+      eventSeatId: updatedSeat.id,
+      status: updatedSeat.status,
+      holdExpiresAt: updatedSeat.holdExpiresAt,
+    });
+
+    return updatedSeat;
   }
 
   async release(eventSeatId: string, holdToken: string) {
