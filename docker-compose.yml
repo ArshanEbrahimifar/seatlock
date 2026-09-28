@@ -46,7 +46,13 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-
+  nginx:
+    image: nginx:alpine
+    container_name: seatlock-nginx
+    ports:
+      - '8080:80'
+    volumes:
+      - ./infra/nginx.conf:/etc/nginx/nginx.conf:ro
 volumes:
   seatlock_postgres_data:
   seatlock_redis_data:
