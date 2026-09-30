@@ -12,7 +12,6 @@ import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OutboxModule } from './outbox/outbox.module';
 import { KafkaModule } from './kafka/kafka.module';
-import { OrderEventsModule } from './order-events/order-events.module';
 import { CorrelationModule } from './correlation/correlation.module';
 import { CorrelationMiddleware } from './correlation/correlation.middleware';
 import { LoggingModule } from './logging/logging.module';
@@ -45,7 +44,6 @@ import { RealtimeModule } from './realtime/realtime.module';
     OrderExpirationModule,
     OutboxModule,
     KafkaModule,
-    OrderEventsModule,
     CorrelationModule,
     LoggingModule,
     HealthModule,

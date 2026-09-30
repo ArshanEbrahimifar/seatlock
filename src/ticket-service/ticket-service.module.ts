@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from '../database/database.module';
-import { OrderEventsModule } from '../order-events/order-events.module';
 import { OrderPaidConsumer } from './order-paid.consumer';
+import { TicketingService } from './ticketing.service';
 
 @Module({
   imports: [
@@ -12,8 +12,8 @@ import { OrderPaidConsumer } from './order-paid.consumer';
     }),
 
     DatabaseModule,
-    OrderEventsModule,
   ],
   controllers: [OrderPaidConsumer],
+  providers: [TicketingService],
 })
 export class TicketServiceModule {}
