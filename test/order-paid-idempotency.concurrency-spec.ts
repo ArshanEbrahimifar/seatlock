@@ -1,20 +1,16 @@
-import { afterAll, beforeAll, describe, expect, it, jest } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 
 import { Test } from '@nestjs/testing';
 import { ConfigModule } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 
-import { DatabaseModule } from '../src/database/database.module';
-import { DatabaseService } from '../src/database/database.service';
-import {
-  OrderEventsService,
-  OrderPaidEvent,
-} from '../src/order-events/order-events.service';
-import { AppLoggerService } from '../src/logging/app-logger.service';
+import { TicketingDatabaseService } from '../src/ticket-service/ticketing-database.service';
+import { TicketingService } from '../src/ticket-service/ticketing.service';
+import { OrderPaidEvent } from '../src/contracts/order-paid.event';
 
 describe('ORDER_PAID consumer idempotency', () => {
-  let database: DatabaseService;
-  let orderEventsService: OrderEventsService;
+  let database: TicketingDatabaseService;
+  let ticketingService: TicketingService;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -23,25 +19,13 @@ describe('ORDER_PAID consumer idempotency', () => {
           isGlobal: true,
           envFilePath: '.env.test',
         }),
-        DatabaseModule,
       ],
 
-      providers: [
-        OrderEventsService,
-
-        {
-          provide: AppLoggerService,
-          useValue: {
-            log: jest.fn(),
-            warn: jest.fn(),
-            error: jest.fn(),
-          },
-        },
-      ],
+      providers: [TicketingDatabaseService, TicketingService],
     }).compile();
 
-    database = moduleRef.get(DatabaseService);
-    orderEventsService = moduleRef.get(OrderEventsService);
+    database = moduleRef.get(TicketingDatabaseService);
+    ticketingService = moduleRef.get(TicketingService);
   });
 
   afterAll(async () => {
@@ -63,8 +47,8 @@ describe('ORDER_PAID consumer idempotency', () => {
     };
 
     const results = await Promise.allSettled([
-      orderEventsService.handleOrderPaid(event),
-      orderEventsService.handleOrderPaid(event),
+      ticketingService.handleOrderPaid(event),
+      ticketingService.handleOrderPaid(event),
     ]);
 
     const rejected = results.filter((result) => result.status === 'rejected');

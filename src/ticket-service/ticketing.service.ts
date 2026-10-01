@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
 import { OrderPaidEvent } from '../contracts/order-paid.event';
+import { TicketingDatabaseService } from './ticketing-database.service';
 
 @Injectable()
 export class TicketingService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(private readonly database: TicketingDatabaseService) {}
 
   async handleOrderPaid(event: OrderPaidEvent): Promise<void> {
     await this.database.$transaction(async (tx) => {

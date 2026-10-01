@@ -1,0 +1,26 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/ticketing-prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model InboxEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  eventId     String
+  consumer    String
+  processedAt DateTime @default(now())
+
+  @@unique([consumer, eventId])
+}
+
+model Ticket {
+  id          String   @id @default(uuid()) @db.Uuid
+  orderId     String   @unique @db.Uuid
+  eventSeatId String   @unique @db.Uuid
+  amount      Decimal  @db.Decimal(10, 2)
+  issuedAt    DateTime @default(now())
+}

@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { DatabaseModule } from '../database/database.module';
 import { OrderPaidConsumer } from './order-paid.consumer';
 import { TicketingService } from './ticketing.service';
+import { TicketingDatabaseService } from './ticketing-database.service';
 
 @Module({
   imports: [
@@ -10,10 +10,8 @@ import { TicketingService } from './ticketing.service';
       isGlobal: true,
       cache: true,
     }),
-
-    DatabaseModule,
   ],
   controllers: [OrderPaidConsumer],
-  providers: [TicketingService],
+  providers: [TicketingService, TicketingDatabaseService],
 })
 export class TicketServiceModule {}
