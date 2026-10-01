@@ -3,11 +3,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+
+import { randomUUID } from 'node:crypto';
+
 import { DatabaseService } from '../database/database.service';
 import { CorrelationService } from '../correlation/correlation.service';
-import { randomUUID } from 'node:crypto';
 import { AppLoggerService } from '../logging/app-logger.service';
 import { SeatUpdatesGateway } from '../realtime/seat-updates.gateway';
+import { MetricsService } from '../metrics/metrics.service';
+
+import { captureTraceContext } from '../telemetry/trace-context';
 
 @Injectable()
 export class OrdersService {
@@ -16,12 +21,23 @@ export class OrdersService {
     private readonly correlationService: CorrelationService,
     private readonly logger: AppLoggerService,
     private readonly seatUpdatesGateway: SeatUpdatesGateway,
+    private readonly metricsService: MetricsService,
   ) {}
 
   async pay(orderId: string) {
     const now = new Date();
 
     const correlationId = this.correlationService.getId() ?? randomUUID();
+
+    /*
+     * Capture the currently active OpenTelemetry
+     * context while we are still inside the HTTP
+     * request.
+     *
+     * This context is persisted in the outbox so
+     * the dispatcher can restore it later.
+     */
+    const traceContext = captureTraceContext();
 
     const result = await this.database.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
@@ -38,18 +54,26 @@ export class OrdersService {
       });
 
       if (!order) {
+        this.metricsService.recordPayment('failed');
+
         throw new NotFoundException('Order not found');
       }
 
       if (order.status === 'PAID') {
+        this.metricsService.recordPayment('failed');
+
         throw new ConflictException('Order is already paid');
       }
 
       if (order.status === 'CANCELLED') {
+        this.metricsService.recordPayment('failed');
+
         throw new ConflictException('Order is cancelled');
       }
 
       if (order.expiresAt <= now) {
+        this.metricsService.recordPayment('failed');
+
         throw new ConflictException('Order has expired');
       }
 
@@ -67,6 +91,8 @@ export class OrdersService {
       });
 
       if (orderResult.count === 0) {
+        this.metricsService.recordPayment('failed');
+
         throw new ConflictException('Order could not be paid');
       }
 
@@ -81,6 +107,8 @@ export class OrdersService {
       });
 
       if (seatResult.count === 0) {
+        this.metricsService.recordPayment('failed');
+
         throw new ConflictException('Reserved seat could not be booked');
       }
 
@@ -90,10 +118,20 @@ export class OrdersService {
 
           payload: {
             correlationId,
+
             orderId: order.id,
+
             eventSeatId: order.eventSeatId,
+
             amount: order.amount.toString(),
+
             paidAt: now.toISOString(),
+
+            /*
+             * Persist W3C trace metadata
+             * together with the outbox event.
+             */
+            traceContext,
           },
         },
       });
@@ -120,12 +158,16 @@ export class OrdersService {
         eventSeat: bookedSeat,
       };
     });
+
+    this.metricsService.recordPayment('success');
+
     this.seatUpdatesGateway.emitSeatUpdated({
       eventId: result.eventSeat.eventId,
       eventSeatId: result.eventSeat.id,
       status: result.eventSeat.status,
       holdExpiresAt: result.eventSeat.holdExpiresAt,
     });
+
     return result;
   }
 
@@ -196,12 +238,14 @@ export class OrdersService {
         }),
       };
     });
+
     this.seatUpdatesGateway.emitSeatUpdated({
       eventId: result.eventSeat.eventId,
       eventSeatId: result.eventSeat.id,
       status: result.eventSeat.status,
       holdExpiresAt: result.eventSeat.holdExpiresAt,
     });
+
     return result;
   }
 
@@ -285,6 +329,7 @@ export class OrdersService {
       status: result.eventSeat.status,
       holdExpiresAt: result.eventSeat.holdExpiresAt,
     });
+
     return result;
   }
 }

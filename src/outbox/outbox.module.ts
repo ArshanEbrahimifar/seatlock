@@ -5,9 +5,10 @@ import { OrderExpirationModule } from '../order-expiration/order-expiration.modu
 import { KafkaModule } from '../kafka/kafka.module';
 import { OutboxAdminService } from './outbox-admin.service';
 import { OutboxAdminController } from './outbox-admin.controller';
+import { MetricsModule } from '../metrics/metrics.module';
 
 @Module({
-  imports: [DatabaseModule, OrderExpirationModule, KafkaModule],
+  imports: [DatabaseModule, OrderExpirationModule, KafkaModule, MetricsModule],
   controllers: [OutboxAdminController],
   providers: [OutboxDispatcherService, OutboxAdminService],
 })

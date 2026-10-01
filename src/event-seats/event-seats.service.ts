@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { OrderExpirationService } from '../order-expiration/order-expiration.service';
 import { SeatUpdatesGateway } from '../realtime/seat-updates.gateway';
+import { MetricsService } from '../metrics/metrics.service';
 @Injectable()
 export class EventSeatsService {
   constructor(
@@ -19,6 +20,7 @@ export class EventSeatsService {
     private readonly configService: ConfigService,
     private readonly orderExpirationService: OrderExpirationService,
     private readonly seatUpdatesGateway: SeatUpdatesGateway,
+    private readonly metricsService: MetricsService,
   ) {}
 
   async create(dto: CreateEventSeatDto, eventId: string) {
@@ -159,6 +161,7 @@ export class EventSeatsService {
     });
 
     if (result.count === 0) {
+      this.metricsService.recordSeatHold('conflict');
       const eventSeat = await this.database.eventSeat.findUnique({
         where: {
           id: eventSeatId,
@@ -182,7 +185,7 @@ export class EventSeatsService {
 
       throw new ConflictException('Seat is currently held');
     }
-
+    this.metricsService.recordSeatHold('success');
     const updatedSeat = await this.database.eventSeat.findUniqueOrThrow({
       where: {
         id: eventSeatId,

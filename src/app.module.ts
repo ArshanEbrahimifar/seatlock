@@ -17,6 +17,7 @@ import { CorrelationMiddleware } from './correlation/correlation.middleware';
 import { LoggingModule } from './logging/logging.module';
 import { HealthModule } from './health/health.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { MetricsModule } from './metrics/metrics.module';
 @Module({
   imports: [
     DatabaseModule,
@@ -48,6 +49,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     LoggingModule,
     HealthModule,
     RealtimeModule,
+    MetricsModule,
   ],
 })
 export class AppModule implements NestModule {

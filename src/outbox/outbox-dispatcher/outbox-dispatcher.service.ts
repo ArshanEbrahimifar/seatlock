@@ -1,32 +1,61 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
+
 import { ConfigService } from '@nestjs/config';
 import { Interval } from '@nestjs/schedule';
+
+import {
+  context as otelContext,
+  propagation,
+  SpanKind,
+  SpanStatusCode,
+  trace,
+} from '@opentelemetry/api';
+
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 
 import { DatabaseService } from '../../database/database.service';
+
 import { KafkaProducerService } from '../../kafka/kafka-producer/kafka-producer.service';
+
 import { AppLoggerService } from '../../logging/app-logger.service';
+
 import { OrderExpirationService } from '../../order-expiration/order-expiration.service';
+
 import { CorrelationService } from '../../correlation/correlation.service';
+
+import { MetricsService } from '../../metrics/metrics.service';
+
+import {
+  extractTraceContext,
+  type TraceCarrier,
+} from '../../telemetry/trace-context';
 
 @Injectable()
 export class OutboxDispatcherService implements OnApplicationShutdown {
   private running = false;
   private shuttingDown = false;
+
   private readonly instanceId = `${hostname()}-${process.pid}-${randomUUID()}`;
 
   constructor(
     private readonly database: DatabaseService,
+
     private readonly configService: ConfigService,
+
     private readonly orderExpirationService: OrderExpirationService,
+
     private readonly kafkaProducerService: KafkaProducerService,
+
     private readonly logger: AppLoggerService,
+
     private readonly correlationService: CorrelationService,
+
+    private readonly metricsService: MetricsService,
   ) {}
 
   @Interval(5000)
-  async dispatch() {
+  async dispatch(): Promise<void> {
     if (this.running || this.shuttingDown) {
       return;
     }
@@ -69,6 +98,7 @@ export class OutboxDispatcherService implements OnApplicationShutdown {
               },
             },
           ],
+
           AND: [
             {
               OR: [
@@ -134,7 +164,9 @@ export class OutboxDispatcherService implements OnApplicationShutdown {
 
             data: {
               processedAt: new Date(),
+
               nextAttemptAt: null,
+
               lockedAt: null,
               lockedBy: null,
 
@@ -144,6 +176,7 @@ export class OutboxDispatcherService implements OnApplicationShutdown {
 
           this.logger.log('outbox.published', {
             outboxEventId: event.id,
+
             type: event.type,
           });
         } catch (error: unknown) {
@@ -154,6 +187,7 @@ export class OutboxDispatcherService implements OnApplicationShutdown {
 
           const retryDelaySeconds = Math.min(
             retryBaseSeconds * 2 ** (nextAttempts - 1),
+
             retryMaxSeconds,
           );
 
@@ -171,9 +205,11 @@ export class OutboxDispatcherService implements OnApplicationShutdown {
 
             data: {
               attempts: nextAttempts,
+
               lastError: message,
 
               deadLetteredAt: shouldDeadLetter ? new Date() : null,
+
               nextAttemptAt: shouldDeadLetter ? null : nextAttemptAt,
 
               lockedAt: null,
@@ -181,21 +217,31 @@ export class OutboxDispatcherService implements OnApplicationShutdown {
             },
           });
 
+          this.metricsService.recordOutboxRetry(event.type);
+
           if (shouldDeadLetter) {
             this.logger.error('outbox.dead_lettered', {
               outboxEventId: event.id,
+
               type: event.type,
+
               attempts: nextAttempts,
+
               error: message,
             });
+
+            this.metricsService.recordOutboxDeadLetter(event.type);
 
             continue;
           }
 
           this.logger.warn('outbox.retry_scheduled', {
             outboxEventId: event.id,
+
             type: event.type,
+
             attempts: nextAttempts,
+
             error: message,
           });
         }
@@ -207,9 +253,11 @@ export class OutboxDispatcherService implements OnApplicationShutdown {
 
   private async processEvent(event: {
     id: string;
+
     type: 'ORDER_EXPIRATION' | 'ORDER_PAID';
+
     payload: unknown;
-  }) {
+  }): Promise<void> {
     switch (event.type) {
       case 'ORDER_EXPIRATION': {
         const payload = event.payload as {
@@ -219,6 +267,7 @@ export class OutboxDispatcherService implements OnApplicationShutdown {
 
         await this.orderExpirationService.schedule(
           payload.orderId,
+
           new Date(payload.expiresAt),
         );
 
@@ -228,33 +277,99 @@ export class OutboxDispatcherService implements OnApplicationShutdown {
       case 'ORDER_PAID': {
         const payload = event.payload as {
           correlationId: string;
+
           orderId: string;
+
           eventSeatId: string;
+
           amount: string;
+
           paidAt: string;
+
+          traceContext?: TraceCarrier;
         };
 
-        await this.correlationService.run(payload.correlationId, async () => {
-          await this.kafkaProducerService.publishOrderPaid({
-            correlationId: payload.correlationId,
-            eventId: event.id,
-            orderId: payload.orderId,
-            eventSeatId: payload.eventSeatId,
-            amount: payload.amount,
-            paidAt: payload.paidAt,
-          });
-        });
+        const parentContext = extractTraceContext(payload.traceContext);
+
+        await this.correlationService.run(
+          payload.correlationId,
+
+          async () => {
+            await otelContext.with(
+              parentContext,
+
+              async () => {
+                const tracer = trace.getTracer('seatlock-outbox');
+
+                await tracer.startActiveSpan(
+                  'kafka.publish order.paid',
+
+                  {
+                    kind: SpanKind.PRODUCER,
+                  },
+
+                  async (span) => {
+                    try {
+                      const headers: TraceCarrier = {};
+
+                      /*
+                       * Inject the currently active
+                       * producer span into the Kafka
+                       * message headers.
+                       */
+                      propagation.inject(otelContext.active(), headers);
+
+                      await this.kafkaProducerService.publishOrderPaid(
+                        {
+                          correlationId: payload.correlationId,
+
+                          eventId: event.id,
+
+                          orderId: payload.orderId,
+
+                          eventSeatId: payload.eventSeatId,
+
+                          amount: payload.amount,
+
+                          paidAt: payload.paidAt,
+                        },
+
+                        headers,
+                      );
+
+                      span.setStatus({
+                        code: SpanStatusCode.OK,
+                      });
+                    } catch (error: unknown) {
+                      if (error instanceof Error) {
+                        span.recordException(error);
+                      }
+
+                      span.setStatus({
+                        code: SpanStatusCode.ERROR,
+                      });
+
+                      throw error;
+                    } finally {
+                      span.end();
+                    }
+                  },
+                );
+              },
+            );
+          },
+        );
 
         break;
       }
     }
   }
 
-  async onApplicationShutdown() {
+  async onApplicationShutdown(): Promise<void> {
     this.shuttingDown = true;
 
     while (this.running) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
     }
   }
 }

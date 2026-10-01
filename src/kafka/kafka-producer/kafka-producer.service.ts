@@ -6,7 +6,12 @@ import {
 } from '@nestjs/common';
 
 import { ClientKafka } from '@nestjs/microservices';
+
 import { lastValueFrom } from 'rxjs';
+
+import { type OrderPaidEvent } from '../../contracts/order-paid.event';
+
+import { type TraceCarrier } from '../../telemetry/trace-context';
 
 @Injectable()
 export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
@@ -15,25 +20,24 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
     private readonly client: ClientKafka,
   ) {}
 
-  async onModuleInit() {
+  async onModuleInit(): Promise<void> {
     await this.client.connect();
   }
 
-  async onModuleDestroy() {
+  async onModuleDestroy(): Promise<void> {
     await this.client.close();
   }
 
-  async publishOrderPaid(payload: {
-    correlationId: string;
-    eventId: string;
-    orderId: string;
-    eventSeatId: string;
-    amount: string;
-    paidAt: string;
-  }) {
+  async publishOrderPaid(
+    payload: OrderPaidEvent,
+    headers: TraceCarrier = {},
+  ): Promise<void> {
     await lastValueFrom(
       this.client.emit('order.paid', {
         key: payload.orderId,
+
+        headers,
+
         value: payload,
       }),
     );
