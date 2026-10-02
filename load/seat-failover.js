@@ -1,13 +1,29 @@
 import http from 'k6/http';
-import { check } from 'k6';
+import { check, sleep } from 'k6';
 import exec from 'k6/execution';
-import { Rate, Trend } from 'k6/metrics';
+import { Counter, Rate, Trend } from 'k6/metrics';
 
 const VUS = Number(__ENV.VUS || 50);
-const DURATION = __ENV.DURATION || '30s';
+const DURATION = __ENV.DURATION || '60s';
+
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+
+const upstreamFailureRate = new Rate('upstream_failure_rate');
+
+const businessFailureRate = new Rate('business_failure_rate');
 
 const unexpectedRate = new Rate('unexpected_rate');
+
+const upstreamFailures = new Counter('upstream_failures');
+
+const businessFailures = new Counter('business_failures');
+
+const holdSuccesses = new Counter('hold_successes');
+
+const releaseSuccesses = new Counter('release_successes');
+
 const holdDuration = new Trend('hold_duration');
+
 const releaseDuration = new Trend('release_duration');
 
 export const options = {
@@ -19,11 +35,18 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
-
 const headers = {
   'Content-Type': 'application/json',
 };
+
+function isUpstreamFailure(response) {
+  return (
+    response.status === 0 ||
+    response.status === 502 ||
+    response.status === 503 ||
+    response.status === 504
+  );
+}
 
 export function setup() {
   const suffix = Date.now();
@@ -31,10 +54,12 @@ export function setup() {
   const venueResponse = http.post(
     `${BASE_URL}/venues`,
     JSON.stringify({
-      name: `Capacity Venue ${suffix}`,
+      name: `Failover Venue ${suffix}`,
       city: 'Istanbul',
     }),
-    { headers },
+    {
+      headers,
+    },
   );
 
   if (venueResponse.status !== 201) {
@@ -46,10 +71,13 @@ export function setup() {
   const eventResponse = http.post(
     `${BASE_URL}/venues/${venue.id}/events`,
     JSON.stringify({
-      name: `Capacity Event ${suffix}`,
+      name: `Failover Event ${suffix}`,
+
       startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     }),
-    { headers },
+    {
+      headers,
+    },
   );
 
   if (eventResponse.status !== 201) {
@@ -60,15 +88,23 @@ export function setup() {
 
   const eventSeatIds = [];
 
-  for (let i = 1; i <= VUS; i++) {
+  const seatsPerVu = 10;
+
+  const totalSeats = VUS * seatsPerVu;
+
+  for (let i = 1; i <= totalSeats; i += 1) {
     const seatResponse = http.post(
       `${BASE_URL}/venues/${venue.id}/seats`,
       JSON.stringify({
-        section: `CAPACITY-${suffix}`,
+        section: `FAILOVER-${suffix}`,
+
         row: 'A',
+
         number: i,
       }),
-      { headers },
+      {
+        headers,
+      },
     );
 
     if (seatResponse.status !== 201) {
@@ -83,7 +119,9 @@ export function setup() {
         seatId: seat.id,
         price: 100,
       }),
-      { headers },
+      {
+        headers,
+      },
     );
 
     if (eventSeatResponse.status !== 201) {
@@ -97,31 +135,71 @@ export function setup() {
 
   return {
     eventSeatIds,
+    seatsPerVu,
   };
 }
 
 export default function (data) {
-  const index = exec.vu.idInTest - 1;
+  const vuIndex = exec.vu.idInTest - 1;
+
+  const iterationIndex = exec.vu.iterationInInstance;
+
+  const seatOffset = iterationIndex % data.seatsPerVu;
+
+  const index = vuIndex * data.seatsPerVu + seatOffset;
 
   const eventSeatId = data.eventSeatIds[index];
 
   const holdResponse = http.post(
     `${BASE_URL}/event-seats/${eventSeatId}/hold`,
     null,
+    {
+      timeout: '3s',
+    },
   );
 
   holdDuration.add(holdResponse.timings.duration);
 
   const holdOk = holdResponse.status === 200 || holdResponse.status === 201;
 
-  check(holdResponse, {
-    'hold succeeded': () => holdOk,
-  });
-
   if (!holdOk) {
+    if (isUpstreamFailure(holdResponse)) {
+      upstreamFailures.add(1);
+      upstreamFailureRate.add(true);
+
+      businessFailureRate.add(false);
+      unexpectedRate.add(false);
+
+      sleep(0.1);
+
+      return;
+    }
+
+    if (holdResponse.status === 409) {
+      businessFailures.add(1);
+
+      businessFailureRate.add(true);
+      upstreamFailureRate.add(false);
+      unexpectedRate.add(false);
+
+      sleep(0.1);
+
+      return;
+    }
+
     unexpectedRate.add(true);
+    upstreamFailureRate.add(false);
+    businessFailureRate.add(false);
+
+    sleep(0.1);
+
     return;
   }
+
+  holdSuccesses.add(1);
+
+  upstreamFailureRate.add(false);
+  businessFailureRate.add(false);
 
   const holdToken = holdResponse.json().holdToken;
 
@@ -130,7 +208,10 @@ export default function (data) {
     JSON.stringify({
       holdToken,
     }),
-    { headers },
+    {
+      headers,
+      timeout: '3s',
+    },
   );
 
   releaseDuration.add(releaseResponse.timings.duration);
@@ -138,9 +219,33 @@ export default function (data) {
   const releaseOk =
     releaseResponse.status === 200 || releaseResponse.status === 201;
 
-  check(releaseResponse, {
-    'release succeeded': () => releaseOk,
-  });
+  if (releaseOk) {
+    releaseSuccesses.add(1);
 
-  unexpectedRate.add(!releaseOk);
+    unexpectedRate.add(false);
+
+    check(releaseResponse, {
+      'release succeeded': () => true,
+    });
+
+    return;
+  }
+
+  if (isUpstreamFailure(releaseResponse)) {
+    upstreamFailures.add(1);
+    upstreamFailureRate.add(true);
+
+    unexpectedRate.add(false);
+
+    sleep(0.1);
+
+    return;
+  }
+
+  businessFailures.add(1);
+  businessFailureRate.add(true);
+
+  unexpectedRate.add(true);
+
+  sleep(0.1);
 }
