@@ -1,0 +1,336 @@
+services:
+  postgres-main:
+    image: postgres:17-alpine
+
+    environment:
+      POSTGRES_USER: seatlock
+      POSTGRES_PASSWORD: seatlock
+      POSTGRES_DB: seatlock
+
+    volumes:
+      - seatlock_prod_postgres_main:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U seatlock -d seatlock']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+    restart: unless-stopped
+
+  postgres-ticketing:
+    image: postgres:17-alpine
+
+    environment:
+      POSTGRES_USER: seatlock
+      POSTGRES_PASSWORD: seatlock
+      POSTGRES_DB: seatlock_ticketing
+
+    volumes:
+      - seatlock_prod_postgres_ticketing:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U seatlock -d seatlock_ticketing']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+
+    volumes:
+      - seatlock_prod_redis:/data
+
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+    restart: unless-stopped
+
+  kafka:
+    image: apache/kafka:4.1.0
+
+    environment:
+      KAFKA_NODE_ID: 1
+
+      KAFKA_PROCESS_ROLES: broker,controller
+
+      KAFKA_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:29093
+
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092
+
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:29092 --list >/dev/null 2>&1',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+    restart: unless-stopped
+
+  main-migrate:
+    build:
+      context: .
+      target: builder
+
+    environment:
+      DATABASE_URL: postgresql://seatlock:seatlock@postgres-main:5432/seatlock?schema=public
+
+    command:
+      ['npx', 'prisma', 'migrate', 'deploy', '--config', 'prisma7.config.ts']
+
+    depends_on:
+      postgres-main:
+        condition: service_healthy
+
+    restart: 'no'
+
+  ticketing-migrate:
+    build:
+      context: .
+      target: builder
+
+    environment:
+      TICKETING_DATABASE_URL: postgresql://seatlock:seatlock@postgres-ticketing:5432/seatlock_ticketing?schema=public
+
+    command:
+      [
+        'npx',
+        'prisma',
+        'migrate',
+        'deploy',
+        '--config',
+        'prisma-ticketing.config.ts',
+      ]
+
+    depends_on:
+      postgres-ticketing:
+        condition: service_healthy
+
+    restart: 'no'
+
+  api-1:
+    build:
+      context: .
+      target: api
+
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+
+      DATABASE_URL: postgresql://seatlock:seatlock@postgres-main:5432/seatlock?schema=public
+
+      DB_POOL_MAX: 20
+
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      KAFKA_BROKERS: kafka:29092
+
+      SEAT_HOLD_SECONDS: 300
+      PAYMENT_WINDOW_SECONDS: 600
+
+      OUTBOX_LOCK_SECONDS: 30
+      OUTBOX_MAX_ATTEMPTS: 10
+      OUTBOX_RETRY_BASE_SECONDS: 5
+      OUTBOX_RETRY_MAX_SECONDS: 300
+
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+
+    depends_on:
+      main-migrate:
+        condition: service_completed_successfully
+
+      redis:
+        condition: service_healthy
+
+      kafka:
+        condition: service_healthy
+
+      jaeger:
+        condition: service_started
+
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+    restart: unless-stopped
+
+  api-2:
+    build:
+      context: .
+      target: api
+
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+
+      DATABASE_URL: postgresql://seatlock:seatlock@postgres-main:5432/seatlock?schema=public
+
+      DB_POOL_MAX: 20
+
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      KAFKA_BROKERS: kafka:29092
+
+      SEAT_HOLD_SECONDS: 300
+      PAYMENT_WINDOW_SECONDS: 600
+
+      OUTBOX_LOCK_SECONDS: 30
+      OUTBOX_MAX_ATTEMPTS: 10
+      OUTBOX_RETRY_BASE_SECONDS: 5
+      OUTBOX_RETRY_MAX_SECONDS: 300
+
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+
+    depends_on:
+      main-migrate:
+        condition: service_completed_successfully
+
+      redis:
+        condition: service_healthy
+
+      kafka:
+        condition: service_healthy
+
+      jaeger:
+        condition: service_started
+
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+    restart: unless-stopped
+
+  ticket-service:
+    build:
+      context: .
+      target: ticket-service
+
+    environment:
+      NODE_ENV: production
+
+      TICKETING_DATABASE_URL: postgresql://seatlock:seatlock@postgres-ticketing:5432/seatlock_ticketing?schema=public
+
+      KAFKA_BROKERS: kafka:29092
+
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+
+    depends_on:
+      ticketing-migrate:
+        condition: service_completed_successfully
+
+      kafka:
+        condition: service_healthy
+
+      jaeger:
+        condition: service_started
+
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+
+    ports:
+      - '8080:80'
+
+    volumes:
+      - ./infra/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+
+    depends_on:
+      api-1:
+        condition: service_healthy
+
+      api-2:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.21.0
+
+    ports:
+      - '16686:16686'
+
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+
+    ports:
+      - '9090:9090'
+
+    volumes:
+      - ./infra/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+      - seatlock_prod_prometheus:/prometheus
+
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+    depends_on:
+      api-1:
+        condition: service_healthy
+
+      api-2:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+
+    ports:
+      - '3002:3000'
+
+    volumes:
+      - seatlock_prod_grafana:/var/lib/grafana
+
+    depends_on:
+      - prometheus
+
+    restart: unless-stopped
+
+volumes:
+  seatlock_prod_postgres_main:
+  seatlock_prod_postgres_ticketing:
+  seatlock_prod_redis:
+  seatlock_prod_prometheus:
+  seatlock_prod_grafana:
